@@ -545,8 +545,8 @@ export const ReportsPage: React.FC = () => {
                 <CardContent>
                   <div className="text-center py-12">
                     <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum relatório gerado</h3>
-                    <p className="text-gray-500">Configure os filtros e clique em "Filtrar" para gerar o relatório</p>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum dado disponível</h3>
+                    <p className="text-gray-500">Não há dados de SS para o período e filtros selecionados. Tente ajustar os critérios de busca ou verifique se existem diários cadastrados no período.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -590,8 +590,8 @@ export const ReportsPage: React.FC = () => {
                 <CardContent>
                   <div className="text-center py-12">
                     <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum relatório gerado</h3>
-                    <p className="text-gray-500">Configure os filtros e clique em "Filtrar" para gerar o relatório</p>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum dado disponível</h3>
+                    <p className="text-gray-500">Não há dados de horas para o período e filtros selecionados. Tente ajustar os critérios de busca ou verifique se existem diários cadastrados no período.</p>
                   </div>
                 </CardContent>
               </Card>

@@ -4,11 +4,12 @@ import moment from 'moment';
 import 'moment/locale/pt-br';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { useDiary } from '../hooks/useDiary';
+import { useAuth } from '../hooks/useAuth';
 
 import { Diary } from '../lib/supabase';
 import { Card, CardHeader, CardContent } from './ui';
 import { Button } from './ui';
-import { Calendar as CalendarIcon, Plus, Edit, Trash2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Plus, Edit, Trash2, X, Clock, Building2, User } from 'lucide-react';
 import { DiaryForm } from './DiaryForm';
 
 // Configurar moment para português brasileiro
@@ -30,12 +31,16 @@ interface CalendarProps {
 
 export const Calendar: React.FC<CalendarProps> = ({ onSelectEvent, onSelectSlot }) => {
 
-  const { diaries, loading, deleteDiary } = useDiary();
+  const { diaries, loading, deleteDiary, fetchDiaries } = useDiary();
+  const { user, isAdmin } = useAuth();
   const [view, setView] = useState<View>(Views.MONTH);
   const [date, setDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingDiary, setEditingDiary] = useState<Diary | null>(null);
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [dateDiaries, setDateDiaries] = useState<Diary[]>([]);
 
   // Converter diários para eventos do calendário
   const events: CalendarEvent[] = useMemo(() => {
@@ -65,12 +70,33 @@ export const Calendar: React.FC<CalendarProps> = ({ onSelectEvent, onSelectSlot 
     onSelectEvent?.(event);
   }, [onSelectEvent]);
 
-  // Manipular seleção de slot (criar novo evento)
+  // Buscar diários por data
+  const fetchDiariesByDate = useCallback(async (dateStr: string) => {
+    try {
+      const filteredDiaries = diaries.filter(diary => diary.date === dateStr);
+      
+      // Se for admin, mostrar todos os diários da data
+      // Se for usuário normal, mostrar apenas seus próprios diários
+      if (isAdmin) {
+        setDateDiaries(filteredDiaries);
+      } else {
+        const userDiaries = filteredDiaries.filter(diary => diary.user_id === user?.id);
+        setDateDiaries(userDiaries);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar diários por data:', error);
+      setDateDiaries([]);
+    }
+  }, [diaries, isAdmin, user?.id]);
+
+  // Manipular seleção de slot (mostrar modal com diários da data)
   const handleSelectSlot = useCallback((slotInfo: { start: Date; end: Date }) => {
-    setShowForm(true);
-    setEditingDiary(null);
+    const dateStr = moment(slotInfo.start).format('YYYY-MM-DD');
+    setSelectedDate(dateStr);
+    fetchDiariesByDate(dateStr);
+    setShowDateModal(true);
     onSelectSlot?.(slotInfo);
-  }, [onSelectSlot]);
+  }, [onSelectSlot, fetchDiariesByDate]);
 
   // Editar evento
   const handleEditEvent = () => {
@@ -281,6 +307,154 @@ export const Calendar: React.FC<CalendarProps> = ({ onSelectEvent, onSelectSlot 
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Modal de diários por data */}
+      {showDateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Diários de {moment(selectedDate).format('DD/MM/YYYY')}
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  {isAdmin 
+                    ? `${dateDiaries.length} diário(s) de todos os usuários`
+                    : `${dateDiaries.length} diário(s) seus`
+                  }
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDateModal(false)}
+                icon={X}
+              >
+                Fechar
+              </Button>
+            </div>
+
+            {dateDiaries.length === 0 ? (
+              <div className="text-center py-8">
+                <CalendarIcon className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Nenhum diário encontrado
+                </h3>
+                <p className="text-gray-600">
+                  {isAdmin 
+                    ? 'Não há diários registrados por nenhum usuário nesta data.'
+                    : 'Você não possui diários registrados nesta data.'}
+                </p>
+                <div className="mt-4">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={Plus}
+                    onClick={() => {
+                      setShowDateModal(false);
+                      setShowForm(true);
+                      setEditingDiary(null);
+                    }}
+                  >
+                    Criar Diário
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {dateDiaries.map((diary) => (
+                  <Card key={diary.id} className="border border-gray-200">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            {isAdmin && (
+                              <div className="flex items-center space-x-1 text-sm text-gray-600">
+                                <User className="h-4 w-4" />
+                                <span>{diary.user?.name || 'Usuário desconhecido'}</span>
+                                <span className="text-gray-400">•</span>
+                              </div>
+                            )}
+                            <div className="flex items-center space-x-1 text-sm text-gray-600">
+                              <Building2 className="h-4 w-4" />
+                              <span>{diary.plant?.name || 'Usina não especificada'}</span>
+                            </div>
+                          </div>
+                          
+                          {diary.activities && diary.activities.length > 0 && (
+                            <div className="space-y-2">
+                              <h4 className="font-medium text-gray-900">
+                                {diary.activities.map(a => a.activity).filter(Boolean).join(', ')}
+                              </h4>
+                              <div className="text-sm text-gray-600">
+                                <div className="flex items-center space-x-1 mb-1">
+                                  <Clock className="h-4 w-4" />
+                                  <span>
+                                    {diary.activities[0].start_time} - {diary.activities[diary.activities.length - 1].end_time}
+                                  </span>
+                                </div>
+                                <div>
+                                  <strong>Equipamentos:</strong> {diary.activities.map(a => a.equipment).filter(Boolean).join(', ')}
+                                </div>
+                                {diary.activities.some(a => a.ss_number) && (
+                                  <div>
+                                    <strong>SS:</strong> {diary.activities.filter(a => a.ss_number).map(a => a.ss_number).join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {diary.observations && (
+                            <div className="mt-2 text-sm text-gray-600">
+                              <strong>Observações:</strong> {diary.observations}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {(!isAdmin || diary.user_id === user?.id) && (
+                          <div className="flex space-x-2 ml-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              icon={Edit}
+                              onClick={() => {
+                                setEditingDiary(diary);
+                                setShowDateModal(false);
+                                setShowForm(true);
+                              }}
+                            >
+                              Editar
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              icon={Trash2}
+                              onClick={async () => {
+                                if (window.confirm('Tem certeza que deseja excluir este diário?')) {
+                                  try {
+                                    await deleteDiary(diary.id);
+                                    fetchDiariesByDate(selectedDate);
+                                  } catch (error) {
+                                    console.error('Erro ao deletar diário:', error);
+                                    alert('Erro ao deletar diário. Tente novamente.');
+                                  }
+                                }
+                              }}
+                            >
+                              Excluir
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Modal do formulário */}

@@ -162,12 +162,12 @@ export const DiaryPage: React.FC = () => {
                 <div className="text-center py-12">
                   <FileText className="mx-auto h-12 w-12 text-gray-400" />
                   <h3 className="mt-2 text-sm font-medium text-gray-900">
-                    {searchTerm || selectedDate ? 'Nenhum diário encontrado' : 'Nenhum diário cadastrado'}
+                    {searchTerm || selectedDate ? 'Nenhum diário encontrado' : 'Nenhum diário disponível'}
                   </h3>
                   <p className="mt-1 text-sm text-gray-500">
                     {searchTerm || selectedDate 
-                      ? 'Tente ajustar os filtros de busca.'
-                      : 'Comece criando seu primeiro diário de atividades.'}
+                      ? 'Não há diários que correspondam aos filtros aplicados. Tente ajustar os critérios de busca.'
+                      : 'Não há diários cadastrados ainda. Comece criando seu primeiro diário de atividades.'}
                   </p>
                   {!searchTerm && !selectedDate && (
                     <div className="mt-6">
