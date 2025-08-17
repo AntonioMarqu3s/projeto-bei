@@ -1,0 +1,11 @@
+<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" rx="24" fill="#3b82f6"/>
+  <path d="M48 64h96v8H48V64zm0 16h96v8H48V80zm0 16h96v8H48V96zm0 16h96v8H48v-8zm0 16h96v8H48v-8z" fill="white"/>
+  <circle cx="64" cy="68" r="2" fill="#3b82f6"/>
+  <circle cx="64" cy="84" r="2" fill="#3b82f6"/>
+  <circle cx="64" cy="100" r="2" fill="#3b82f6"/>
+  <circle cx="64" cy="116" r="2" fill="#3b82f6"/>
+  <circle cx="64" cy="132" r="2" fill="#3b82f6"/>
+  <path d="M32 32h128c8.837 0 16 7.163 16 16v96c0 8.837-7.163 16-16 16H32c-8.837 0-16-7.163-16-16V48c0-8.837 7.163-16 16-16z" stroke="white" stroke-width="2" fill="none"/>
+  <text x="96" y="40" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="12" font-weight="bold">DIÁRIO BEI</text>
+</svg>

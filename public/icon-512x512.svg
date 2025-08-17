@@ -1,0 +1,13 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="64" fill="#3b82f6"/>
+  <path d="M128 170h256v20H128v-20zm0 40h256v20H128v-20zm0 40h256v20H128v-20zm0 40h256v20H128v-20zm0 40h256v20H128v-20zm0 40h256v20H128v-20z" fill="white"/>
+  <circle cx="170" cy="180" r="6" fill="#3b82f6"/>
+  <circle cx="170" cy="220" r="6" fill="#3b82f6"/>
+  <circle cx="170" cy="260" r="6" fill="#3b82f6"/>
+  <circle cx="170" cy="300" r="6" fill="#3b82f6"/>
+  <circle cx="170" cy="340" r="6" fill="#3b82f6"/>
+  <circle cx="170" cy="380" r="6" fill="#3b82f6"/>
+  <path d="M80 80h352c21.333 0 38.667 17.333 38.667 38.667v234.666C470.667 374.667 453.333 392 432 392H80c-21.333 0-38.667-17.333-38.667-38.667V118.667C41.333 97.333 58.667 80 80 80z" stroke="white" stroke-width="6" fill="none"/>
+  <text x="256" y="120" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="32" font-weight="bold">DIÁRIO BEI</text>
+  <text x="256" y="150" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="16">Sistema de Atividades</text>
+</svg>
