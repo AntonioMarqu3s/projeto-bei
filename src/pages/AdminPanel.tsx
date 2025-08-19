@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Building2, Factory, Plus, Edit, Trash2, Search, Save, X, ArrowLeft } from 'lucide-react';
+import { Users, Building2, Factory, Plus, Edit, Trash2, Search, Save, X, ArrowLeft, FileText, Eye } from 'lucide-react';
 import { Button, Card, CardHeader, CardContent, Input, Select } from '../components/ui';
 import { ConfirmModal } from '../components/ui';
+import { DiaryDetailModal } from '../components/DiaryDetailModal';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { supabase, supabaseAdmin, User, Cluster, Plant } from '../lib/supabase';
+import { supabase, supabaseAdmin, User, Cluster, Plant, Diary } from '../lib/supabase';
+import { useDiary } from '../hooks/useDiary';
 import { User as SupabaseAuthUser } from '@supabase/supabase-js';
 
 interface NewUser {
@@ -29,11 +31,18 @@ interface NewPlant {
 
 export const AdminPanel: React.FC = () => {
   const { user, isAdmin } = useAuth();
+  const { diaries } = useDiary();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'users' | 'clusters' | 'plants'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'clusters' | 'plants' | 'diaries'>('users');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  
+  // Estados para modal de diário
+  const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
+  const [showDiaryModal, setShowDiaryModal] = useState(false);
+  
+
 
   // Estados para usuários
   const [users, setUsers] = useState<User[]>([]);
@@ -484,6 +493,8 @@ export const AdminPanel: React.FC = () => {
     setError(null);
   };
 
+
+
   const filteredUsers = users.filter(user => 
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -552,10 +563,18 @@ export const AdminPanel: React.FC = () => {
               <p className="text-sm text-red-800">{error}</p>
             </div>
           )}
+
+
           
           {success && (
             <div className="mb-4 bg-green-50 border border-green-200 rounded-md p-4">
               <p className="text-sm text-green-800">{success}</p>
+              <button 
+                onClick={() => setSuccess(null)}
+                className="ml-2 text-green-600 hover:text-green-800"
+              >
+                ×
+              </button>
             </div>
           )}
 
@@ -595,6 +614,18 @@ export const AdminPanel: React.FC = () => {
                 <Factory className="h-4 w-4 inline mr-2" />
                 Usinas
               </button>
+              <button
+                onClick={() => setActiveTab('diaries')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'diaries'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <FileText className="h-4 w-4 inline mr-2" />
+                Diários
+              </button>
+
             </nav>
           </div>
 
@@ -603,23 +634,41 @@ export const AdminPanel: React.FC = () => {
             <div className="flex-1 max-w-md">
               <Input
                 type="text"
-                placeholder={`Buscar ${activeTab === 'users' ? 'usuários' : activeTab === 'clusters' ? 'clusters' : 'usinas'}...`}
+                placeholder={`Buscar ${activeTab === 'users' ? 'usuários' : activeTab === 'clusters' ? 'clusters' : activeTab === 'plants' ? 'usinas' : 'diários'}...`}
                 value={searchTerm}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
                 icon={Search}
               />
             </div>
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (activeTab === 'users') setShowUserForm(true);
-                else if (activeTab === 'clusters') setShowClusterForm(true);
-                else setShowPlantForm(true);
-              }}
-              icon={Plus}
-            >
-              Adicionar {activeTab === 'users' ? 'Usuário' : activeTab === 'clusters' ? 'Cluster' : 'Usina'}
-            </Button>
+            {activeTab !== 'diaries' && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (activeTab === 'users') {
+                    setShowUserForm(true);
+                    setEditingUser(null);
+                    setNewUser({
+                      name: '',
+                      email: '',
+                      role: 'technician',
+                      cluster_id: '',
+                      availability: 'available'
+                    });
+                  } else if (activeTab === 'clusters') {
+                    setShowClusterForm(true);
+                    setEditingCluster(null);
+                    setNewCluster({ name: '', description: '' });
+                  } else if (activeTab === 'plants') {
+                    setShowPlantForm(true);
+                    setEditingPlant(null);
+                    setNewPlant({ name: '', location: '', cluster_id: '' });
+                  }
+                }}
+                icon={Plus}
+              >
+                Adicionar {activeTab === 'users' ? 'Usuário' : activeTab === 'clusters' ? 'Cluster' : 'Usina'}
+              </Button>
+            )}
           </div>
 
           {/* Content based on active tab */}
@@ -960,8 +1009,111 @@ export const AdminPanel: React.FC = () => {
               </Card>
             </div>
           )}
+
+          {/* Seção de Diários */}
+          {activeTab === 'diaries' && (
+            <div>
+              <Card>
+                <CardHeader 
+                  title="Diários de Atividades"
+                  subtitle={`${diaries.length} diário(s) encontrado(s)`}
+                />
+                <CardContent>
+                  {diaries.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <h3 className="text-lg font-medium mb-2">Nenhum diário encontrado</h3>
+                      <p>Não há diários cadastrados no sistema ainda.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Data
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Usuário
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Usina
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Atividades
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Status
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Ações
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {diaries.map((diary) => (
+                            <tr key={diary.id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {new Date(diary.date).toLocaleDateString('pt-BR')}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {diary.user?.name || 'N/A'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {diary.plant?.name || 'N/A'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {diary.activities?.length || 0} atividade(s)
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  diary.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                  diary.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                                  diary.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {diary.status === 'completed' ? 'Concluído' :
+                                   diary.status === 'in_progress' ? 'Em Progresso' :
+                                   diary.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedDiary(diary);
+                                    setShowDiaryModal(true);
+                                  }}
+                                  icon={Eye}
+                                >
+                                  Ver Detalhes
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </main>
+      
+      {/* Modal de Detalhes do Diário */}
+      {selectedDiary && (
+        <DiaryDetailModal
+          diary={selectedDiary}
+          isOpen={showDiaryModal}
+          onClose={() => {
+            setSelectedDiary(null);
+            setShowDiaryModal(false);
+          }}
+        />
+      )}
       
       {/* Modal de Confirmação */}
       <ConfirmModal

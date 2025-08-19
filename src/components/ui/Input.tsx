@@ -56,6 +56,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>((
             fullWidth && 'w-full',
             className
           )}
+          style={{ 
+            direction: 'ltr', 
+            textAlign: 'left',
+            ...(props.type === 'date' && {
+              colorScheme: 'light',
+              fontFamily: 'inherit'
+            })
+          }}
+          {...(props.type === 'date' && {
+            lang: 'pt-BR'
+          })}
           {...props}
         />
         

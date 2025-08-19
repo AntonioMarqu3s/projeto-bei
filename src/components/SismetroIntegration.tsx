@@ -178,7 +178,7 @@ export const SismetroSSButton: React.FC<{
   compact?: boolean;
 }> = ({ ssNumber, compact = false }) => {
   const handleOpenSS = () => {
-    const link = `${import.meta.env.VITE_SISMETRO_BASE_URL}/ss/${ssNumber}`;
+    const link = `https://br.sismetro.com/indexNEW.php?f=10&e=${ssNumber}`;
     window.open(link, '_blank');
   };
 

@@ -1,47 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, Clock, BarChart3, Filter, ArrowLeft } from 'lucide-react';
+import { Download, Clock, BarChart3, Filter, ArrowLeft, FileText, Users, Calendar } from 'lucide-react';
 import { Button, Input, Card, CardHeader, CardContent, Select } from '../components/ui';
+import { DateInput } from '../components/ui/DateInput';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { supabase, Plant, Cluster, SSReport } from '../lib/supabase';
+import { supabase, Plant, Cluster } from '../lib/supabase';
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-
-// Interfaces para relatórios
-interface DiaryWithRelations {
-  id: string;
-  date: string;
-  equipment: string;
-  activity: string;
-  ss_number?: string;
-  start_time: string;
-  end_time: string;
-  plant?: {
-    name: string;
-    cluster?: {
-      name: string;
-    };
-  };
-  team?: {
-    name: string;
-  };
-}
-
-interface ActivityData {
-  date: string;
-  equipment: string;
-  activity: string;
-  ss_number?: string;
-  team_name: string;
-}
-
-interface GroupedData {
-  [clusterName: string]: {
-    [plantName: string]: ActivityData[];
-  };
-}
 
 interface ClusterHoursData {
   cluster_name: string;
@@ -56,372 +23,386 @@ interface HoursReportExtended {
 }
 
 export const ReportsPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ss' | 'hours'>('ss');
-  const [filters, setFilters] = useState({
-    startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-    endDate: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
-    clusterId: '',
-    plantId: ''
-  })
-
   
-  const [ssReports, setSsReports] = useState<SSReport[]>([]);
-  const [hoursReports, setHoursReports] = useState<HoursReportExtended[]>([]);
-  const [clusters, setClusters] = useState<Cluster[]>([])
-  const [plants, setPlants] = useState<Plant[]>([])
-
+  // Estados principais
+  const [reportStartDate, setReportStartDate] = useState<string>('');
+  const [reportEndDate, setReportEndDate] = useState<string>('');
+  const [useDefaultPeriod, setUseDefaultPeriod] = useState<boolean>(true);
+  const [reportData, setReportData] = useState<any[]>([]);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [showAllDiaries, setShowAllDiaries] = useState(false);
+  const [selectedCluster, setSelectedCluster] = useState<string>('');
+  const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
+  
+  // Estados para dados
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [plants, setPlants] = useState<Plant[]>([]);
+  
   // Carregar clusters e usinas
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Buscar clusters
-        const { data: clustersData } = await supabase
+        const { data: clustersData, error: clustersError } = await supabase
           .from('clusters')
           .select('*')
           .order('name');
         
-        if (clustersData) setClusters(clustersData);
-
+        if (clustersError) throw clustersError;
+        setClusters(clustersData || []);
+        
         // Buscar usinas
-        let plantsQuery = supabase
+        const { data: plantsData, error: plantsError } = await supabase
           .from('plants')
-          .select('*, cluster:clusters(name)')
+          .select('*')
           .order('name');
         
-        if (user?.role !== 'admin' && user?.cluster_id) {
-          plantsQuery = plantsQuery.eq('cluster_id', user.cluster_id);
-        }
-        
-        const { data: plantsData } = await plantsQuery;
-        if (plantsData) setPlants(plantsData);
+        if (plantsError) throw plantsError;
+        setPlants(plantsData || []);
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
       }
     };
-
+    
     fetchData();
-  }, [user]);
+  }, []);
+  
+  // Função auxiliar para calcular horas de atividade
+  const calculateActivityHours = (startTime: string, endTime: string): string => {
+    try {
+      const [startHour, startMin] = startTime.split(':').map(Number);
+      const [endHour, endMin] = endTime.split(':').map(Number);
+      
+      let totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+      
+      // Handle overnight activities
+      if (totalMinutes < 0) {
+        totalMinutes += 24 * 60;
+      }
+      
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      
+      return `${hours}:${minutes.toString().padStart(2, '0')}`;
+    } catch (error) {
+      return '0:00';
+    }
+  };
 
-  // Gerar relatório de SS
-  const generateSSReport = async () => {
-    setLoading(true);
+  // Função auxiliar para formatar diário em texto
+  const formatDiaryToText = (diary: any): string => {
+    console.log('Formatando diário:', diary);
+    
+    const formattedDate = new Date(diary.date).toLocaleDateString('pt-BR');
+    const clusterName = diary.plant?.cluster?.name || 'Cluster não especificado';
+    
+    let text = `📅 Informe Diário – Programação de Equipe - ${clusterName}\n`;
+    text += `📆 Data: ${formattedDate}\n\n`;
+    
+    text += `👥 Equipes em Campo:\n\n`;
+    
+    // Adicionar participantes
+    if (diary.participants && diary.participants.length > 0) {
+      diary.participants.forEach((participant: any) => {
+        const role = participant.user?.role === 'technician' ? 'Técnico Eletrotécnico' : 
+                    participant.user?.role === 'maintainer' ? 'Mantenedor' : 
+                    participant.user?.role === 'cluster_manager' ? 'Gerente de Cluster' : 'Administrador';
+        
+        text += `${participant.user?.name || 'N/A'} – ${clusterName} – ${role} – ${participant.user?.name || 'N/A'}\n`;
+      });
+    } else {
+      // Se não há participantes, usar o responsável do diário
+      const userRole = diary.user?.role === 'technician' ? 'Técnico Eletrotécnico' : 
+                      diary.user?.role === 'maintainer' ? 'Mantenedor' : 
+                      diary.user?.role === 'cluster_manager' ? 'Gerente de Cluster' : 'Administrador';
+      text += `${diary.user?.name || 'N/A'} – ${clusterName} – ${userRole} – ${diary.user?.name || 'N/A'}\n`;
+    }
+    
+    // Adicionar pessoas externas
+    if (diary.external_people && diary.external_people.length > 0) {
+      diary.external_people.forEach((external: any) => {
+        const role = external.external_person?.role || 'Externo';
+        const company = external.external_person?.company ? ` (${external.external_person.company})` : '';
+        text += `${external.external_person?.name || 'N/A'} – ${clusterName} – ${role}${company} – ${external.external_person?.name || 'N/A'}\n`;
+      });
+    }
+    
+    text += `\n\n🔧 Manutenções Programadas:\n\n`;
+    
+    if (diary.activities && diary.activities.length > 0) {
+      diary.activities.forEach((activity: any) => {
+        text += `Usina: ${diary.plant?.name || 'N/A'} – Equipamento: ${activity.equipment || 'N/A'} – Horário: [${activity.start_time} às ${activity.end_time}] – Atividade: [${activity.activity || activity.description || 'N/A'}]`;
+        if (activity.ss_number) {
+          text += ` - SS: [${activity.ss_number}]`;
+        }
+        text += `\n`;
+      });
+    } else {
+      text += `Nenhuma atividade programada\n`;
+    }
+    
+    text += `\n📌 Observações Importantes:\n\n`;
+    if (diary.general_observations) {
+      text += `[${diary.general_observations}]\n\n`;
+    } else {
+      text += `[Nenhuma observação especial]\n\n`;
+    }
+    
+    text += `📲 Contato do Líder: Pedro Canosa\n`;
+    text += `📲 Contato do Coordenador: Edmilson Silva\n`;
+    
+    return text;
+  };
+  
+  // Função para gerar relatório completo com todos os diários
+  const generateCompleteReport = async () => {
+    setGeneratingReport(true);
+    
     try {
       let query = supabase
         .from('diaries')
         .select(`
           *,
-          plant:plants(name, cluster:clusters(name)),
-          team:teams(name)
+          plant:plants!inner(name, cluster:clusters!inner(id, name)),
+          user:users(id, name, email, role, cluster_id),
+          activities:diary_activities(*),
+          participants:diary_users(
+            user:users(id, name, email, role, cluster_id),
+            role
+          ),
+          external_people:diary_external_people(
+            external_person:external_people(*)
+          )
         `)
-        .not('ss_number', 'is', null)
-        .gte('date', filters.startDate)
-        .lte('date', filters.endDate);
-
+        .order('date', { ascending: false });
+      
+      // Aplicar filtros de data apenas se especificados
+      if (reportStartDate && reportEndDate) {
+        query = query.gte('date', reportStartDate).lte('date', reportEndDate);
+        setUseDefaultPeriod(false);
+      } else {
+        setUseDefaultPeriod(true);
+      }
+      
+      // Aplicar filtro de cluster se não for admin
       if (user?.role !== 'admin' && user?.cluster_id) {
-        query = query.eq('cluster_id', user.cluster_id);
+        query = query.eq('plant.cluster.id', user.cluster_id);
       }
-      
-      if (filters.clusterId) {
-        query = query.eq('cluster_id', filters.clusterId);
-      }
-      
-      if (filters.plantId) {
-        query = query.eq('plant_id', filters.plantId);
-      }
-
-      const { data: diaries } = await query;
-      
-      if (diaries) {
-        // Agrupar por cluster e usina
-        const grouped = diaries.reduce((acc: GroupedData, diary: DiaryWithRelations) => {
-          const clusterName = diary.plant?.cluster?.name || 'Sem cluster';
-          const plantName = diary.plant?.name || 'Sem usina';
-          
-          if (!acc[clusterName]) acc[clusterName] = {};
-          if (!acc[clusterName][plantName]) acc[clusterName][plantName] = [];
-          
-          acc[clusterName][plantName].push({
-            date: format(parseISO(diary.date), 'dd/MM/yyyy'),
-            equipment: diary.equipment,
-            activity: diary.activity,
-            ss_number: diary.ss_number,
-            team_name: diary.team?.name || 'Sem equipe'
-          });
-          
-          return acc;
-        }, {});
-
-        const reports: SSReport[] = [];
-        Object.entries(grouped).forEach(([clusterName, plants]) => {
-          Object.entries(plants).forEach(([plantName, activities]) => {
-            reports.push({
-              cluster_name: clusterName,
-              plant_name: plantName,
-              ss_count: activities.length,
-              ss_list: activities.map((a: ActivityData) => a.ss_number).filter(Boolean) as string[]
-            });
-          });
-        });
         
-        setSsReports(reports);
-      }
-    } catch (error) {
-      console.error('Erro ao gerar relatório de SS:', error);
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      console.log('Relatório completo gerado:', data?.length || 0, 'diários');
+      setReportData(data || []);
+      setShowAllDiaries(true);
+      
+    } catch (err) {
+      console.error('Erro ao gerar relatório completo:', err);
+      alert('Erro ao gerar relatório. Tente novamente.');
     } finally {
-      setLoading(false);
+      setGeneratingReport(false);
     }
   };
-
-  // Gerar relatório de horas
-  const generateHoursReport = async () => {
-    setLoading(true);
+  
+  // Função para gerar relatório por cluster selecionado
+  const generateClusterReport = async (clusterId: string) => {
+    setGeneratingReport(true);
+    
     try {
       let query = supabase
         .from('diaries')
         .select(`
           *,
-          plant:plants(cluster:clusters(name))
+          plant:plants!inner(name, cluster:clusters!inner(id, name)),
+          user:users(id, name, email, role, cluster_id),
+          activities:diary_activities(*),
+          participants:diary_users(
+            user:users(id, name, email, role, cluster_id),
+            role
+          ),
+          external_people:diary_external_people(
+            external_person:external_people(*)
+          )
         `)
-        .gte('date', filters.startDate)
-        .lte('date', filters.endDate);
-
-      if (user?.role !== 'admin' && user?.cluster_id) {
-        query = query.eq('cluster_id', user.cluster_id);
-      }
+        .eq('plant.cluster.id', clusterId)
+        .order('date', { ascending: false });
       
-      if (filters.clusterId) {
-        query = query.eq('cluster_id', filters.clusterId);
+      // Aplicar filtros de data apenas se especificados
+      if (reportStartDate && reportEndDate) {
+        query = query.gte('date', reportStartDate).lte('date', reportEndDate);
       }
-
-      const { data: diaries } = await query;
-      
-      if (diaries) {
-        // Agrupar por data
-        const grouped = (diaries as DiaryWithRelations[]).reduce((acc: Record<string, DiaryWithRelations[]>, diary: DiaryWithRelations) => {
-          const date = diary.date;
-          if (!acc[date]) acc[date] = [];
-          acc[date].push(diary);
-          return acc;
-        }, {} as Record<string, DiaryWithRelations[]>);
-
-        const reports: HoursReportExtended[] = [];
-        Object.entries(grouped).forEach(([date, dayDiaries]) => {
-          // Calcular horas totais do dia
-          const totalHours = dayDiaries.reduce((sum: number, diary: DiaryWithRelations) => {
-            const start = new Date(`2000-01-01T${diary.start_time}`);
-            const end = new Date(`2000-01-01T${diary.end_time}`);
-            const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-            return sum + hours;
-          }, 0);
-
-          // Agrupar por cluster
-          const clusterGroups = dayDiaries.reduce((acc: Record<string, DiaryWithRelations[]>, diary: DiaryWithRelations) => {
-            const clusterName = diary.plant?.cluster?.name || 'Sem cluster';
-            if (!acc[clusterName]) acc[clusterName] = [];
-            acc[clusterName].push(diary);
-            return acc;
-          }, {} as Record<string, DiaryWithRelations[]>);
-
-          const clusters: ClusterHoursData[] = Object.entries(clusterGroups).map(([clusterName, clusterDiaries]) => {
-            const clusterHours = clusterDiaries.reduce((sum: number, diary: DiaryWithRelations) => {
-              const start = new Date(`2000-01-01T${diary.start_time}`);
-              const end = new Date(`2000-01-01T${diary.end_time}`);
-              const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-              return sum + hours;
-            }, 0);
-
-            return {
-              cluster_name: clusterName,
-              hours: Math.round(clusterHours * 100) / 100,
-              activities_count: clusterDiaries.length
-            };
-          });
-
-          reports.push({
-            date: format(parseISO(date), 'dd/MM/yyyy'),
-            total_hours: Math.round(totalHours * 100) / 100,
-            clusters
-          });
-        });
         
-        setHoursReports(reports.sort((a, b) => a.date.localeCompare(b.date)));
-      }
-    } catch (error) {
-      console.error('Erro ao gerar relatório de horas:', error);
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      setReportData(data || []);
+      setShowAllDiaries(false);
+      
+    } catch (err) {
+      console.error('Erro ao gerar relatório por cluster:', err);
     } finally {
-      setLoading(false);
+      setGeneratingReport(false);
+    }
+  };
+  
+  // Função para exportar relatório completo (todos os diários)
+  const exportCompleteReport = async () => {
+    try {
+      let query = supabase
+        .from('diaries')
+        .select(`
+          *,
+          plant:plants!inner(name, cluster:clusters!inner(id, name)),
+          user:users(id, name, email, role, cluster_id),
+          activities:diary_activities(*),
+          participants:diary_users(
+            user:users(id, name, email, role, cluster_id),
+            role
+          ),
+          external_people:diary_external_people(
+            external_person:external_people(*)
+          )
+        `)
+        .order('date', { ascending: true });
+      
+      // Aplicar filtros de data apenas se especificados
+      if (reportStartDate && reportEndDate) {
+        query = query.gte('date', reportStartDate).lte('date', reportEndDate);
+      }
+      
+      // Aplicar filtro de cluster se não for admin
+      if (user?.role !== 'admin' && user?.cluster_id) {
+        query = query.eq('plant.cluster.id', user.cluster_id);
+      }
+        
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      // Gerar conteúdo TXT para todos os diários
+      let allContent = 'RELATÓRIO COMPLETO - TODOS OS DIÁRIOS\n';
+      
+      if (reportStartDate && reportEndDate) {
+        allContent += `Período: ${new Date(reportStartDate).toLocaleDateString('pt-BR')} a ${new Date(reportEndDate).toLocaleDateString('pt-BR')}\n`;
+      } else {
+        allContent += 'Período: Todos os registros disponíveis\n';
+      }
+      
+      allContent += `Total de diários: ${data?.length || 0}\n\n`;
+      allContent += '='.repeat(100) + '\n\n';
+      
+      (data || []).forEach(diary => {
+        allContent += formatDiaryToText(diary);
+        allContent += '\n';
+      });
+      
+      // Download do arquivo
+      const blob = new Blob([allContent], { type: 'text/plain;charset=utf-8' });
+      const dateStr = reportStartDate && reportEndDate ? `${reportStartDate}_${reportEndDate}` : 'todos_registros';
+      const fileName = `relatorio_completo_${dateStr}.txt`;
+      saveAs(blob, fileName);
+      
+    } catch (err) {
+      console.error('Erro ao exportar relatório completo:', err);
+      alert('Erro ao exportar relatório. Tente novamente.');
     }
   };
 
-  // Exportar para PDF
-  const exportToPDF = () => {
-    const doc = new jsPDF();
-    const title = activeTab === 'ss' ? 'Relatório de Solicitações de Serviço (SS)' : 'Relatório de Horas Agendadas';
+  // Função para exportar diários de clusters selecionados
+  const exportSelectedClusters = async () => {
+    if (selectedClusters.length === 0) {
+      alert('Selecione pelo menos um cluster para exportação');
+      return;
+    }
     
-    doc.setFontSize(16);
-    doc.text(title, 20, 20);
-    doc.setFontSize(12);
-    doc.text(`Período: ${format(parseISO(filters.startDate), 'dd/MM/yyyy')} a ${format(parseISO(filters.endDate), 'dd/MM/yyyy')}`, 20, 30);
-    
-    let yPosition = 50;
-    
-    if (activeTab === 'ss') {
-      ssReports.forEach((report) => {
-        if (yPosition > 250) {
-          doc.addPage();
-          yPosition = 20;
+    try {
+      let query = supabase
+        .from('diaries')
+        .select(`
+          *,
+          plant:plants!inner(name, cluster:clusters!inner(id, name)),
+          user:users(id, name, email, role, cluster_id),
+          activities:diary_activities(*),
+          participants:diary_users(
+            user:users(id, name, email, role, cluster_id),
+            role
+          ),
+          external_people:diary_external_people(
+            external_person:external_people(*)
+          )
+        `)
+        .in('plant.cluster.id', selectedClusters)
+        .order('date', { ascending: true });
+      
+      // Aplicar filtros de data apenas se especificados
+      if (reportStartDate && reportEndDate) {
+        query = query.gte('date', reportStartDate).lte('date', reportEndDate);
+      }
+        
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      // Agrupar por cluster
+      const clusterGroups: { [key: string]: any[] } = {};
+      
+      (data || []).forEach(diary => {
+        const clusterName = diary.plant?.cluster?.name || 'Cluster não especificado';
+        if (!clusterGroups[clusterName]) {
+          clusterGroups[clusterName] = [];
+        }
+        clusterGroups[clusterName].push(diary);
+      });
+      
+      // Gerar conteúdo TXT para clusters selecionados
+      let allContent = 'RELATÓRIO - CLUSTERS SELECIONADOS\n';
+      
+      if (reportStartDate && reportEndDate) {
+        allContent += `Período: ${new Date(reportStartDate).toLocaleDateString('pt-BR')} a ${new Date(reportEndDate).toLocaleDateString('pt-BR')}\n`;
+      } else {
+        allContent += 'Período: Todos os registros disponíveis\n';
+      }
+      
+      allContent += `Clusters: ${Object.keys(clusterGroups).join(', ')}\n`;
+      allContent += `Total de diários: ${data?.length || 0}\n\n`;
+      allContent += '='.repeat(100) + '\n\n';
+      
+      Object.entries(clusterGroups).forEach(([clusterName, diaries], index) => {
+        if (index > 0) {
+          allContent += '=======================================================\n\n';
         }
         
-        doc.setFontSize(14);
-        doc.text(`${report.cluster_name} - ${report.plant_name}`, 20, yPosition);
-        doc.setFontSize(10);
-        doc.text(`Total de SS: ${report.ss_count}`, 20, yPosition + 10);
-        
-        yPosition += 25;
-        
-        report.ss_list.forEach((ssNumber: string) => {
-          if (yPosition > 270) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          
-          doc.text(`SS: ${ssNumber}`, 25, yPosition);
-          yPosition += 10;
+        diaries.forEach(diary => {
+          allContent += formatDiaryToText(diary);
+          allContent += '\n';
         });
-        
-        yPosition += 10;
       });
-    } else {
-      hoursReports.forEach((report) => {
-        if (yPosition > 250) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        
-        doc.setFontSize(14);
-        doc.text(`${report.date}`, 20, yPosition);
-        doc.setFontSize(10);
-        doc.text(`Total de horas: ${report.total_hours}h`, 20, yPosition + 10);
-        
-        yPosition += 25;
-        
-        report.clusters.forEach((cluster: ClusterHoursData) => {
-          if (yPosition > 270) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          
-          doc.text(`${cluster.cluster_name}: ${cluster.hours}h (${cluster.activities_count} atividades)`, 25, yPosition);
-          yPosition += 10;
-        });
-        
-        yPosition += 10;
-      });
-    }
-    
-    doc.save(`${title.toLowerCase().replace(/\s+/g, '-')}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
-  };
-
-  // Exportar para Excel
-  const exportToExcel = () => {
-    const wb = XLSX.utils.book_new();
-    
-    if (activeTab === 'ss') {
-      const data = ssReports.flatMap(report => 
-        report.ss_list.map((ssNumber: string) => ({
-          'Cluster': report.cluster_name,
-          'Usina': report.plant_name,
-          'SS': ssNumber
-        }))
-      );
       
-      const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, 'Relatório SS');
-    } else {
-      const data = hoursReports.flatMap(report => 
-        report.clusters.map((cluster: ClusterHoursData) => ({
-          'Data': report.date,
-          'Cluster': cluster.cluster_name,
-          'Horas': cluster.hours,
-          'Atividades': cluster.activities_count,
-          'Total do Dia': report.total_hours
-        }))
-      );
+      // Download do arquivo
+      const blob = new Blob([allContent], { type: 'text/plain;charset=utf-8' });
+      const dateStr = reportStartDate && reportEndDate ? `${reportStartDate}_${reportEndDate}` : 'todos_registros';
+      const fileName = `relatorio_clusters_selecionados_${dateStr}.txt`;
+      saveAs(blob, fileName);
       
-      const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, 'Relatório Horas');
+    } catch (err) {
+      console.error('Erro ao exportar clusters selecionados:', err);
+      alert('Erro ao exportar relatório. Tente novamente.');
     }
-    
-    const fileName = `relatorio-${activeTab}-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
-    XLSX.writeFile(wb, fileName);
   };
-
-  // Exportar para TXT
-  const exportToTXT = () => {
-    let content = '';
-    const title = activeTab === 'ss' ? 'RELATÓRIO DE SOLICITAÇÕES DE SERVIÇO (SS)' : 'RELATÓRIO DE HORAS AGENDADAS';
-    
-    content += `${title}\n`;
-    content += `Período: ${format(parseISO(filters.startDate), 'dd/MM/yyyy')} a ${format(parseISO(filters.endDate), 'dd/MM/yyyy')}\n`;
-    content += `Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}\n\n`;
-    content += '='.repeat(80) + '\n\n';
-    
-    if (activeTab === 'ss') {
-      ssReports.forEach((report) => {
-        content += `${report.cluster_name} - ${report.plant_name}\n`;
-        content += `Total de SS: ${report.ss_count}\n`;
-        content += '-'.repeat(50) + '\n';
-        
-        report.ss_list.forEach((ssNumber: string) => {
-          content += `SS: ${ssNumber}\n`;
-        });
-        
-        content += '\n';
-      });
-    } else {
-      hoursReports.forEach((report) => {
-        content += `Data: ${report.date}\n`;
-        content += `Total de horas: ${report.total_hours}h\n`;
-        content += '-'.repeat(30) + '\n';
-        
-        report.clusters.forEach((cluster: ClusterHoursData) => {
-          content += `${cluster.cluster_name}: ${cluster.hours}h (${cluster.activities_count} atividades)\n`;
-        });
-        
-        content += '\n';
-      });
-    }
-    
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const fileName = `relatorio-${activeTab}-${format(new Date(), 'yyyy-MM-dd')}.txt`;
-    saveAs(blob, fileName);
-  };
-
-  // Abrir SS no Sismetro
-  const openSismetro = (ssNumber: string) => {
-    const sismetroUrl = `https://sismetro.bei.eng.br/ss/${ssNumber}`;
-    window.open(sismetroUrl, '_blank');
-  };
-
+  
   const clusterOptions = clusters.map(cluster => ({
     value: cluster.id,
     label: cluster.name
   }));
-
-  const plantOptions = plants
-    .filter(plant => !filters.clusterId || plant.cluster_id === filters.clusterId)
-    .map(plant => ({
-      value: plant.id,
-      label: plant.name
-    }));
-
+  
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Cabeçalho */}
         <div className="mb-8">
           <div className="flex items-center space-x-4 mb-4">
             <Button
@@ -433,202 +414,237 @@ export const ReportsPage: React.FC = () => {
               Dashboard
             </Button>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Relatórios</h1>
-              <p className="text-gray-600">Visualize e exporte relatórios detalhados do sistema</p>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Relatórios de Diários
+              </h1>
+              <p className="mt-2 text-gray-600">
+                Gere e exporte relatórios detalhados das atividades registradas
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Filtros */}
-        <Card className="mb-6">
-          <CardHeader title="Filtros" />
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-              <Input
-                label="Data Início"
-                type="date"
-                value={filters.startDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-              />
-              <Input
-                label="Data Fim"
-                type="date"
-                value={filters.endDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-              />
-              {(user?.role === 'admin' || user?.role === 'cluster_manager') && (
-                <Select
-                  label="Cluster"
-                  placeholder="Todos os clusters"
-                  options={clusterOptions}
-                  value={filters.clusterId}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                    setFilters(prev => ({ ...prev, clusterId: e.target.value, plantId: '' }));
-                  }}
-                />
-              )}
-              <Select
-                label="Usina"
-                placeholder="Todas as usinas"
-                options={plantOptions}
-                value={filters.plantId}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters(prev => ({ ...prev, plantId: e.target.value }))}
-              />
-              <div className="flex items-end">
-                <Button
-                  onClick={activeTab === 'ss' ? generateSSReport : generateHoursReport}
-                  loading={loading}
-                  icon={Filter}
-                  fullWidth
-                >
-                  Filtrar
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Tabs */}
-        <div className="mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setActiveTab('ss')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'ss'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <FileText className="h-4 w-4 inline mr-2" />
-                Relatório de SS
-              </button>
-              <button
-                onClick={() => setActiveTab('hours')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'hours'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <Clock className="h-4 w-4 inline mr-2" />
-                Relatório de Horas
-              </button>
-            </nav>
-          </div>
-        </div>
-
-        {/* Ações de Exportação */}
-        {((activeTab === 'ss' && ssReports.length > 0) || (activeTab === 'hours' && hoursReports.length > 0)) && (
-          <Card className="mb-6">
+        <div className="space-y-6">
+          {/* Filtros de Período */}
+          <Card>
+            <CardHeader 
+              title="Período do Relatório"
+              subtitle="Defina o período para análise (opcional - deixe em branco para todos os registros)"
+            />
             <CardContent>
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={exportToPDF} icon={Download} variant="outline">
-                  Exportar PDF
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data Inicial (Opcional)
+                  </label>
+                  <DateInput
+                    value={reportStartDate}
+                    onChange={setReportStartDate}
+                    fullWidth
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data Final (Opcional)
+                  </label>
+                  <DateInput
+                    value={reportEndDate}
+                    onChange={setReportEndDate}
+                    fullWidth
+                  />
+                </div>
+              </div>
+              {reportStartDate || reportEndDate ? (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700">
+                    📅 Período selecionado: {reportStartDate ? new Date(reportStartDate).toLocaleDateString('pt-BR') : 'Início'} até {reportEndDate ? new Date(reportEndDate).toLocaleDateString('pt-BR') : 'Fim'}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 p-3 bg-green-50 rounded-lg">
+                  <p className="text-sm text-green-700">
+                    📊 Modo padrão: Todos os registros disponíveis serão incluídos
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Relatórios Principais */}
+          <Card>
+            <CardHeader 
+              title="Relatórios de Diários"
+              subtitle="Visualize e exporte relatórios completos de diários"
+            />
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Button
+                  variant="primary"
+                  icon={FileText}
+                  onClick={generateCompleteReport}
+                  disabled={generatingReport}
+                  className="h-20 flex-col"
+                >
+                  <span className="font-semibold">{generatingReport ? 'Gerando...' : 'Visualizar Relatório'}</span>
+                  <span className="text-sm opacity-80">Todos os diários do período</span>
                 </Button>
-                <Button onClick={exportToExcel} icon={Download} variant="outline">
-                  Exportar Excel
-                </Button>
-                <Button onClick={exportToTXT} icon={Download} variant="outline">
-                  Exportar TXT
+                <Button
+                  variant="outline"
+                  icon={Download}
+                  onClick={exportCompleteReport}
+                  className="h-20 flex-col"
+                >
+                  <span className="font-semibold">Exportar Completo</span>
+                  <span className="text-sm opacity-80">Arquivo TXT formatado</span>
                 </Button>
               </div>
             </CardContent>
           </Card>
-        )}
 
-        {/* Conteúdo dos Relatórios */}
-        {activeTab === 'ss' && (
-          <div className="space-y-6">
-            {ssReports.length === 0 ? (
-              <Card>
-                <CardContent>
-                  <div className="text-center py-12">
-                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum dado disponível</h3>
-                    <p className="text-gray-500">Não há dados de SS para o período e filtros selecionados. Tente ajustar os critérios de busca ou verifique se existem diários cadastrados no período.</p>
+          {/* Relatórios por Cluster */}
+          <Card>
+            <CardHeader 
+              title="Relatórios por Cluster"
+              subtitle="Gere relatórios específicos por cluster ou grupos de clusters"
+            />
+            <CardContent>
+              <div className="space-y-6">
+                {/* Cluster Individual */}
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                    <Users className="h-4 w-4 mr-2" />
+                    Cluster Individual
+                  </h4>
+                  <div className="flex gap-3">
+                    <Select
+                      value={selectedCluster}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedCluster(e.target.value)}
+                      options={clusterOptions}
+                      placeholder="Selecione um cluster..."
+                      fullWidth
+                    />
+                    <Button
+                      onClick={() => selectedCluster && generateClusterReport(selectedCluster)}
+                      disabled={!selectedCluster}
+                      variant="outline"
+                    >
+                      Visualizar
+                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            ) : (
-              ssReports.map((report, index) => (
-                <Card key={index}>
-                  <CardHeader 
-                    title={`${report.cluster_name} - ${report.plant_name}`}
-                    subtitle={`${report.ss_count} SS encontradas`}
-                  />
-                  <CardContent>
-                    <div className="space-y-4">
-                      {report.ss_list.map((ssNumber: string, actIndex: number) => (
-                        <div key={actIndex} className="border-l-4 border-blue-500 pl-4 py-2">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center space-x-4">
-                              <span className="font-medium text-gray-900">SS: {ssNumber}</span>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openSismetro(ssNumber)}
-                            >
-                              Abrir SS
-                            </Button>
-                          </div>
-                        </div>
+                </div>
+
+                {/* Múltiplos Clusters */}
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Múltiplos Clusters
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 p-4 bg-gray-50 rounded-lg max-h-40 overflow-y-auto">
+                      {clusters.map(cluster => (
+                        <label key={cluster.id} className="flex items-center space-x-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={selectedClusters.includes(cluster.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedClusters(prev => [...prev, cluster.id]);
+                              } else {
+                                setSelectedClusters(prev => prev.filter(id => id !== cluster.id));
+                              }
+                            }}
+                            className="rounded border-gray-300"
+                          />
+                          <span>{cluster.name}</span>
+                        </label>
                       ))}
                     </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        )}
-
-        {activeTab === 'hours' && (
-          <div className="space-y-6">
-            {hoursReports.length === 0 ? (
-              <Card>
-                <CardContent>
-                  <div className="text-center py-12">
-                    <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum dado disponível</h3>
-                    <p className="text-gray-500">Não há dados de horas para o período e filtros selecionados. Tente ajustar os critérios de busca ou verifique se existem diários cadastrados no período.</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              hoursReports.map((report, index) => (
-                <Card key={index}>
-                  <CardHeader 
-                    title={report.date}
-                    subtitle={`Total: ${report.total_hours}h`}
-                  />
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {report.clusters.map((cluster: ClusterHoursData, clusterIndex: number) => (
-                        <div key={clusterIndex} className="bg-gray-50 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-medium text-gray-900">{cluster.cluster_name}</h4>
-                            <BarChart3 className="h-4 w-4 text-gray-400" />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">Horas:</span>
-                              <span className="font-medium">{cluster.hours}h</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">Atividades:</span>
-                              <span className="font-medium">{cluster.activities_count}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={() => setSelectedClusters(clusters.map(c => c.id))}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Selecionar Todos
+                      </Button>
+                      <Button
+                        onClick={() => setSelectedClusters([])}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Limpar
+                      </Button>
+                      <Button
+                        onClick={exportSelectedClusters}
+                        disabled={selectedClusters.length === 0}
+                        variant="primary"
+                        size="sm"
+                      >
+                        Exportar Selecionados ({selectedClusters.length})
+                      </Button>
                     </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Área de Resultados */}
+          {reportData.length > 0 && (
+            <Card>
+              <CardHeader 
+                title={`Resultados do Relatório (${reportData.length} registros)`}
+                subtitle={useDefaultPeriod ? 'Todos os registros disponíveis' : `Período: ${reportStartDate ? new Date(reportStartDate).toLocaleDateString('pt-BR') : ''} - ${reportEndDate ? new Date(reportEndDate).toLocaleDateString('pt-BR') : ''}`}
+              />
+              <CardContent>
+                <div className="space-y-4">
+                  {reportData.map((diary: any) => (
+                    <div key={diary.id} className="border rounded-lg p-4 bg-white">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-medium text-lg">{diary.title || 'Sem título'}</h4>
+                        <span className="text-sm text-gray-600">
+                          {new Date(diary.date).toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                        <p><strong>Usuário:</strong> {diary.user?.name || 'N/A'}</p>
+                        <p><strong>Usina:</strong> {diary.plant?.name || 'N/A'}</p>
+                        <p><strong>Cluster:</strong> {diary.plant?.cluster?.name || 'N/A'}</p>
+                      </div>
+                      
+                      {diary.general_observations && (
+                        <p className="text-sm text-gray-700 mt-2">
+                          <strong>Observações:</strong> {diary.general_observations}
+                        </p>
+                      )}
+                      
+                      {diary.activities && diary.activities.length > 0 && (
+                        <div className="mt-3">
+                          <h5 className="text-sm font-medium mb-2">Atividades:</h5>
+                          <ul className="text-sm space-y-1">
+                            {diary.activities.map((activity: any) => (
+                              <li key={activity.id} className="border-l-2 border-blue-200 pl-2">
+                                <strong>{activity.description || activity.activity}</strong><br/>
+                                Equipamento: {activity.equipment || 'N/A'}<br/>
+                                Horário: {activity.start_time} às {activity.end_time}
+                                <span className="text-gray-500 ml-2">
+                                  ({calculateActivityHours(activity.start_time, activity.end_time)}h)
+                                </span>
+                                {activity.ss_number && (
+                                  <><br/>SS: {activity.ss_number}</>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );

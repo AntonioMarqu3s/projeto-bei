@@ -11,6 +11,7 @@ import { Card, CardHeader, CardContent } from './ui';
 import { Button } from './ui';
 import { Calendar as CalendarIcon, Plus, Edit, Trash2, X, Clock, Building2, User } from 'lucide-react';
 import { DiaryForm } from './DiaryForm';
+import { DiaryDetailModal } from './DiaryDetailModal';
 
 // Configurar moment para português brasileiro
 moment.locale('pt-br');
@@ -31,7 +32,7 @@ interface CalendarProps {
 
 export const Calendar: React.FC<CalendarProps> = ({ onSelectEvent, onSelectSlot }) => {
 
-  const { diaries, loading, deleteDiary, fetchDiaries } = useDiary();
+  const { diaries, loading, deleteDiary } = useDiary();
   const { user, isAdmin } = useAuth();
   const [view, setView] = useState<View>(Views.MONTH);
   const [date, setDate] = useState(new Date());
@@ -41,10 +42,14 @@ export const Calendar: React.FC<CalendarProps> = ({ onSelectEvent, onSelectSlot 
   const [showDateModal, setShowDateModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [dateDiaries, setDateDiaries] = useState<Diary[]>([]);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
 
   // Converter diários para eventos do calendário
   const events: CalendarEvent[] = useMemo(() => {
-    return diaries.map(diary => {
+    console.log('Calendar: Convertendo diários para eventos:', diaries.length, diaries);
+    
+    const calendarEvents = diaries.map(diary => {
       const startDateTime = diary.activities && diary.activities.length > 0 
         ? new Date(`${diary.date}T${diary.activities[0].start_time}`)
         : new Date(`${diary.date}T08:00`);
@@ -62,13 +67,23 @@ export const Calendar: React.FC<CalendarProps> = ({ onSelectEvent, onSelectSlot 
         resource: diary
       };
     });
+    
+    console.log('Calendar: Eventos criados:', calendarEvents.length, calendarEvents);
+    return calendarEvents;
   }, [diaries]);
 
   // Manipular seleção de evento
   const handleSelectEvent = useCallback((event: CalendarEvent) => {
-    setSelectedEvent(event);
+    setSelectedDiary(event.resource);
+    setShowDetailModal(true);
     onSelectEvent?.(event);
   }, [onSelectEvent]);
+
+  // Fechar modal de detalhes
+  const closeDetailModal = () => {
+    setSelectedDiary(null);
+    setShowDetailModal(false);
+  };
 
   // Buscar diários por data
   const fetchDiariesByDate = useCallback(async (dateStr: string) => {
@@ -474,6 +489,15 @@ export const Calendar: React.FC<CalendarProps> = ({ onSelectEvent, onSelectSlot 
             />
           </div>
         </div>
+      )}
+
+      {/* Modal de Detalhes do Diário */}
+      {selectedDiary && (
+        <DiaryDetailModal
+          diary={selectedDiary}
+          isOpen={showDetailModal}
+          onClose={closeDetailModal}
+        />
       )}
     </div>
   );

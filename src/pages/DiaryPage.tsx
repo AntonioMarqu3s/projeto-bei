@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Calendar, Clock, Building2, FileText, Search, ArrowLeft } from 'lucide-react';
-import { Button, Input, Card, CardContent } from '../components/ui';
+import { Plus, Edit, Trash2, Calendar, Clock, Building2, FileText, Search, ArrowLeft, Eye } from 'lucide-react';
+import { Button, Input, DateInput, Card, CardContent } from '../components/ui';
 import { SismetroSSButton } from '../components/SismetroIntegration';
+import { DiaryDetailModal } from '../components/DiaryDetailModal';
 import { useDiary } from '../hooks/useDiary';
 import { useNavigate } from 'react-router-dom';
 import type { Diary } from '../lib/supabase';
@@ -21,6 +22,8 @@ export const DiaryPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
   // Carregar diários ao montar o componente
   useEffect(() => {
@@ -44,6 +47,16 @@ export const DiaryPage: React.FC = () => {
 
   const handleNewDiary = () => {
     navigate('/diaries/new');
+  };
+
+  const handleViewDetails = (diary: Diary) => {
+    setSelectedDiary(diary);
+    setShowDetailModal(true);
+  };
+
+  const closeDetailModal = () => {
+    setSelectedDiary(null);
+    setShowDetailModal(false);
   };
 
   const handleEditDiary = (diary: Diary) => {
@@ -132,11 +145,10 @@ export const DiaryPage: React.FC = () => {
                     fullWidth
                   />
                 </div>
-                <Input
-                  type="date"
+                <DateInput
                   label="Filtrar por data"
                   value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
+                  onChange={(value) => setSelectedDate(value)}
                   fullWidth
                 />
               </div>
@@ -215,6 +227,14 @@ export const DiaryPage: React.FC = () => {
                           </div>
                           <div className="flex space-x-2">
                             <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewDetails(diary)}
+                              icon={Eye}
+                            >
+                              Ver Detalhes
+                            </Button>
+                            <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleEditDiary(diary)}
@@ -292,6 +312,15 @@ export const DiaryPage: React.FC = () => {
           )}
         </div>
       </main>
+
+      {/* Modal de Detalhes do Diário */}
+      {selectedDiary && (
+        <DiaryDetailModal
+          diary={selectedDiary}
+          isOpen={showDetailModal}
+          onClose={closeDetailModal}
+        />
+      )}
     </div>
   );
 };
