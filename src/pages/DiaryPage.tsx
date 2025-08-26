@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Calendar, Clock, Building2, FileText, Search, ArrowLeft } from 'lucide-react';
-import { Button, Input, Card, CardContent } from '../components/ui';
+import { Plus, Edit, Trash2, Calendar, Clock, Building2, FileText, Search, ArrowLeft, Eye } from 'lucide-react';
+import { Button, Input, DateInput, Card, CardContent } from '../components/ui';
 import { SismetroSSButton } from '../components/SismetroIntegration';
+import { DiaryDetailModal } from '../components/DiaryDetailModal';
 import { useDiary } from '../hooks/useDiary';
 import { useNavigate } from 'react-router-dom';
 import type { Diary } from '../lib/supabase';
@@ -21,6 +22,8 @@ export const DiaryPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
   // Carregar diários ao montar o componente
   useEffect(() => {
@@ -44,6 +47,16 @@ export const DiaryPage: React.FC = () => {
 
   const handleNewDiary = () => {
     navigate('/diaries/new');
+  };
+
+  const handleViewDetails = (diary: Diary) => {
+    setSelectedDiary(diary);
+    setShowDetailModal(true);
+  };
+
+  const closeDetailModal = () => {
+    setSelectedDiary(null);
+    setShowDetailModal(false);
   };
 
   const handleEditDiary = (diary: Diary) => {
@@ -132,11 +145,10 @@ export const DiaryPage: React.FC = () => {
                     fullWidth
                   />
                 </div>
-                <Input
-                  type="date"
+                <DateInput
                   label="Filtrar por data"
                   value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
+                  onChange={(value) => setSelectedDate(value)}
                   fullWidth
                 />
               </div>
@@ -162,12 +174,12 @@ export const DiaryPage: React.FC = () => {
                 <div className="text-center py-12">
                   <FileText className="mx-auto h-12 w-12 text-gray-400" />
                   <h3 className="mt-2 text-sm font-medium text-gray-900">
-                    {searchTerm || selectedDate ? 'Nenhum diário encontrado' : 'Nenhum diário cadastrado'}
+                    {searchTerm || selectedDate ? 'Nenhum diário encontrado' : 'Nenhum diário disponível'}
                   </h3>
                   <p className="mt-1 text-sm text-gray-500">
                     {searchTerm || selectedDate 
-                      ? 'Tente ajustar os filtros de busca.'
-                      : 'Comece criando seu primeiro diário de atividades.'}
+                      ? 'Não há diários que correspondam aos filtros aplicados. Tente ajustar os critérios de busca.'
+                      : 'Não há diários cadastrados ainda. Comece criando seu primeiro diário de atividades.'}
                   </p>
                   {!searchTerm && !selectedDate && (
                     <div className="mt-6">
@@ -214,6 +226,14 @@ export const DiaryPage: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewDetails(diary)}
+                              icon={Eye}
+                            >
+                              Ver Detalhes
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -292,6 +312,15 @@ export const DiaryPage: React.FC = () => {
           )}
         </div>
       </main>
+
+      {/* Modal de Detalhes do Diário */}
+      {selectedDiary && (
+        <DiaryDetailModal
+          diary={selectedDiary}
+          isOpen={showDetailModal}
+          onClose={closeDetailModal}
+        />
+      )}
     </div>
   );
 };

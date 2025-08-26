@@ -49,6 +49,26 @@ export interface Plant {
   location?: string
   created_at: string
   updated_at: string
+  cluster?: Cluster
+}
+
+export interface DiaryUser {
+  user: User;
+  role: 'creator' | 'participant';
+}
+
+export interface ExternalPerson {
+  id: string;
+  name: string;
+  role?: string;
+  contact?: string;
+  company?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiaryExternalPerson {
+  external_person: ExternalPerson;
 }
 
 export interface Diary {
@@ -64,7 +84,10 @@ export interface Diary {
   updated_at: string;
   // Relacionamentos
   plant?: Plant;
+  user?: User;
   activities?: DiaryActivity[];
+  participants?: DiaryUser[];
+  external_people?: DiaryExternalPerson[];
 }
 
 export interface DiaryActivity {

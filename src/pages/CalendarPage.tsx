@@ -1,13 +1,37 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui';
 import { Calendar } from '../components/Calendar';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 export const CalendarPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [clusterName, setClusterName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchClusterName = async () => {
+      if (user?.cluster_id) {
+        try {
+          const { data, error } = await supabase
+            .from('clusters')
+            .select('name')
+            .eq('id', user.cluster_id)
+            .single();
+          
+          if (data && !error) {
+            setClusterName(data.name);
+          }
+        } catch (err) {
+          console.error('Erro ao buscar nome do cluster:', err);
+        }
+      }
+    };
+    
+    fetchClusterName();
+  }, [user?.cluster_id]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -28,7 +52,7 @@ export const CalendarPage: React.FC = () => {
                 Calendário de Atividades
               </h1>
               <p className="mt-2 text-gray-600">
-                Visualize e gerencie todas as atividades programadas do cluster {user?.cluster_id}
+                Visualize e gerencie todas as atividades programadas para o {clusterName || 'cluster'}
               </p>
             </div>
           </div>

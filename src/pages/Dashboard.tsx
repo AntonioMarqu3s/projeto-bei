@@ -125,20 +125,7 @@ export const Dashboard: React.FC = () => {
           {/* Additional Actions for Admins */}
           {(isAdmin || isClusterManager) && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-              <Card className="hover:shadow-md transition-shadow">
-                <CardContent>
-                  <div className="flex items-center mb-4">
-                    <Users className="h-8 w-8 text-indigo-600" />
-                    <div className="ml-4">
-                      <h3 className="text-lg font-medium text-gray-900">Gerenciar Equipes</h3>
-                      <p className="text-sm text-gray-600">Criar e gerenciar equipes de trabalho</p>
-                    </div>
-                  </div>
-                  <Button variant="outline" fullWidth onClick={() => navigate('/teams')}>
-                    Gerenciar Equipes
-                  </Button>
-                </CardContent>
-              </Card>
+
 
               <Card className="hover:shadow-md transition-shadow">
                 <CardContent>

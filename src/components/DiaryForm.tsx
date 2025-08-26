@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Clock, Save, X, Users, Building2, Wrench, FileText, Plus, Trash2, Copy, ArrowUpDown } from 'lucide-react';
 import { Button, Input, Select, Card, CardHeader, CardContent } from './ui';
 import { useDiary, type DiaryFormData } from '../hooks/useDiary';
+import { useAuth } from '../hooks/useAuth';
 import type { Diary } from '../lib/supabase';
 
 
@@ -68,16 +69,24 @@ const sortActivitiesByTime = (activities: ActivityData[]) => {
 };
 
 // Schema de validação para o diário
+const externalPersonSchema = z.object({
+  name: z.string().min(1, 'Nome é obrigatório'),
+  role: z.string().optional(),
+  contact: z.string().optional(),
+  company: z.string().optional(),
+});
+
 const diarySchema = z.object({
   plant_id: z.string().min(1, 'Selecione uma usina'),
   user_ids: z.array(z.string()).min(1, 'Selecione pelo menos um usuário'),
+  external_people: z.array(externalPersonSchema).optional(),
   date: z.string().min(1, 'Data é obrigatória'),
   activities: z.array(activitySchema).min(1, 'Adicione pelo menos uma atividade'),
   general_observations: z.string().optional(),
 }).refine((data) => {
-  const overlapCheck = checkTimeOverlap(data.activities);
-  return overlapCheck.valid;
-}, {
+   const overlapCheck = checkTimeOverlap(data.activities);
+   return overlapCheck.valid;
+ }, {
   message: 'Há conflito de horários entre as atividades',
   path: ['activities'],
 });
@@ -93,6 +102,7 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
   onSuccess,
   onCancel,
 }) => {
+  const { user } = useAuth();
   const {
     plants,
     clusterUsers,
@@ -104,6 +114,8 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
     fetchClusterUsers,
     clearError,
   } = useDiary();
+
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
 
   const [selectedPlant, setSelectedPlant] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,7 +131,12 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
     resolver: zodResolver(diarySchema),
     defaultValues: diary ? {
       plant_id: diary.plant_id,
-      user_ids: [],
+      user_ids: diary.participants?.map(p => p.user.id) || (user?.id ? [user.id] : []),
+      external_people: diary.external_people?.map(ep => ({
+        name: ep.external_person.name,
+        role: ep.external_person.role || '',
+        contact: ep.external_person.contact || ''
+      })) || [],
       date: diary.date || new Date().toISOString().split('T')[0],
       activities: diary.activities || [{
         equipment: '',
@@ -132,7 +149,8 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
       general_observations: diary.general_observations || '',
     } : {
       plant_id: '',
-      user_ids: [],
+      user_ids: user?.id ? [user.id] : [],
+      external_people: [],
       date: new Date().toISOString().split('T')[0],
       activities: [{
         equipment: '',
@@ -149,6 +167,11 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
   const { fields, append, remove } = useFieldArray({
     control,
     name: 'activities',
+  });
+
+  const { fields: externalFields, append: appendExternal, remove: removeExternal } = useFieldArray({
+    control,
+    name: 'external_people',
   });
 
   const watchedPlantId = watch('plant_id');
@@ -211,10 +234,15 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
     label: plant.name,
   }));
 
-  const userOptions = clusterUsers.map(user => ({
+  const userOptions = availableUsers.map(user => ({
     value: user.id,
-    label: `${user.name} (${user.email})`,
+    label: user.name,
   }));
+
+  // Carregar usuários disponíveis
+  useEffect(() => {
+    setAvailableUsers(clusterUsers);
+  }, [clusterUsers]);
 
   const addActivity = () => {
     append({
@@ -225,6 +253,18 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
       ss_number: '',
       observations: '',
     });
+  };
+
+  const addExternalPerson = () => {
+    appendExternal({
+      name: '',
+      role: '',
+      contact: '',
+    });
+  };
+
+  const removeExternalPerson = (index: number) => {
+    removeExternal(index);
   };
 
   const duplicateActivity = (index: number) => {
@@ -348,6 +388,82 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
               />
             </div>
 
+            {/* Pessoas Externas */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-sm font-medium text-gray-700">
+                  <Users className="h-4 w-4" />
+                  <span>Pessoas Externas ({externalFields.length})</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addExternalPerson}
+                  icon={Plus}
+                >
+                  Adicionar Pessoa Externa
+                </Button>
+              </div>
+              
+              {externalFields.length > 0 && (
+                <div className="space-y-3">
+                  {externalFields.map((field, index) => (
+                    <Card key={field.id} className="border border-gray-200">
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="text-sm font-medium text-gray-900">
+                            Pessoa Externa {index + 1}
+                          </h4>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeExternalPerson(index)}
+                            icon={Trash2}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            Remover
+                          </Button>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <Input
+                            label="Nome *"
+                            placeholder="Nome da pessoa"
+                            error={errors.external_people?.[index]?.name?.message}
+                            {...register(`external_people.${index}.name`)}
+                            fullWidth
+                          />
+                          <Input
+                            label="Função"
+                            placeholder="Ex: Técnico, Supervisor"
+                            error={errors.external_people?.[index]?.role?.message}
+                            {...register(`external_people.${index}.role`)}
+                            fullWidth
+                          />
+                          <Input
+                            label="Empresa"
+                            placeholder="Nome da empresa"
+                            error={errors.external_people?.[index]?.company?.message}
+                            {...register(`external_people.${index}.company`)}
+                            fullWidth
+                          />
+                          <Input
+                            label="Contato"
+                            placeholder="Telefone ou email"
+                            error={errors.external_people?.[index]?.contact?.message}
+                            {...register(`external_people.${index}.contact`)}
+                            fullWidth
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-4">
               <div className="flex items-center space-x-2 text-sm font-medium text-gray-700">
                 <Clock className="h-4 w-4" />
@@ -460,6 +576,8 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
                     label="Horário de Início"
                     error={errors.activities?.[index]?.start_time?.message}
                     {...register(`activities.${index}.start_time`)}
+                    step="1"
+                    pattern="[0-9]{2}:[0-9]{2}"
                     fullWidth
                   />
                   
@@ -468,6 +586,8 @@ export const DiaryForm: React.FC<DiaryFormProps> = ({
                     label="Horário de Fim"
                     error={errors.activities?.[index]?.end_time?.message}
                     {...register(`activities.${index}.end_time`)}
+                    step="1"
+                    pattern="[0-9]{2}:[0-9]{2}"
                     fullWidth
                   />
                   

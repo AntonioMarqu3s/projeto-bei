@@ -6,7 +6,7 @@ import NewDiaryPage from "./pages/NewDiaryPage";
 import CalendarPage from "./pages/CalendarPage";
 import { AdminPanel } from "./pages/AdminPanel";
 import { ReportsPage } from "./pages/ReportsPage";
-import { TeamsPage } from "./pages/TeamsPage";
+
 import { TestCRUD } from "./components/TestCRUD";
 import { AuthDebug } from "./components/AuthDebug";
 import ProtectedRoute, { PublicRoute } from "./components/ProtectedRoute";
@@ -84,14 +84,7 @@ export default function App() {
           }
         />
         
-        <Route
-          path="/teams"
-          element={
-            <ProtectedRoute>
-              <TeamsPage />
-            </ProtectedRoute>
-          }
-        />
+
         
         <Route
           path="/test-crud"

@@ -43,7 +43,17 @@ export const useAuth = () => {
         const userData = await fetchUserData(session.user.id)
         
         if (userData) {
-          setAuthState({ user: userData, loading: false, error: null })
+          // Verificar se os dados realmente mudaram antes de atualizar
+          setAuthState(prev => {
+            if (prev.user?.id === userData.id && 
+                prev.user?.role === userData.role && 
+                prev.user?.name === userData.name) {
+              // Dados não mudaram, apenas atualizar loading
+              return { ...prev, loading: false, error: null }
+            }
+            // Dados mudaram, atualizar tudo
+            return { user: userData, loading: false, error: null }
+          })
         } else {
           setAuthState({ user: null, loading: false, error: 'Usuário não encontrado na base de dados' })
         }
@@ -103,9 +113,44 @@ export const useAuth = () => {
       }
     )
 
+    // Escutar mudanças na tabela de usuários para atualizar o perfil automaticamente
+    let userSubscription: any = null
+    
+    const setupUserSubscription = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user && mounted) {
+        userSubscription = supabase
+          .channel('user-changes')
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'users',
+              filter: `id=eq.${session.user.id}`
+            },
+            async (payload) => {
+              if (mounted && payload.new) {
+                console.log('useAuth: Dados do usuário atualizados no banco:', payload.new)
+                setAuthState(prev => ({
+                  ...prev,
+                  user: payload.new as User
+                }))
+              }
+            }
+          )
+          .subscribe()
+      }
+    }
+
+    setupUserSubscription()
+
     return () => {
       mounted = false
       subscription.unsubscribe()
+      if (userSubscription) {
+        userSubscription.unsubscribe()
+      }
     }
   }, [handleSessionChange])
 
@@ -156,11 +201,23 @@ export const useAuth = () => {
     setAuthState(prev => ({ ...prev, error: null }))
   }, [])
 
+  // Função para forçar atualização dos dados do usuário
+  const refreshUserData = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      const userData = await fetchUserData(session.user.id)
+      if (userData) {
+        setAuthState(prev => ({ ...prev, user: userData }))
+      }
+    }
+  }, [fetchUserData])
+
   return {
     ...authState,
     signIn,
     signOut,
     clearError,
+    refreshUserData,
     isAuthenticated: !!authState.user,
     isAdmin: authState.user?.role === 'admin',
     isClusterManager: authState.user?.role === 'cluster_manager' || authState.user?.role === 'admin',
