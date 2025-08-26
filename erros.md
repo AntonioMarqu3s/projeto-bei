@@ -1,7 +1,6 @@
 # 📋 Relatório de Problemas - Trae
 
 ## 📊 Resumo Geral
-
 - 🔴 **Erros:** 0
 - ⚠️ **Avisos:** 0
 - ℹ️ **Informações:** 0
@@ -9,7 +8,6 @@
 - 📁 **Arquivos com problemas:** 0
 
 ## ✅ Correções aplicadas
-
 - ReportsPage.tsx
   - Corrigida incompatibilidade de tipos: state hoursReports agora usa HoursReportExtended[] coerente com os dados gerados
   - Removido uso de propriedades inexistentes em SSReport (activities); substituído por ss_list em PDF/Excel/TXT
@@ -33,7 +31,6 @@
   - Problema resolvido com migração 'fix_diary_insert_policy'
 
 ## ✅ RESOLVIDO - Erro 403 Forbidden ao Salvar Diário (15/08/2025)
-
 ### Problema
 - Erro 403 (Forbidden) ao tentar salvar diário via POST para `/rest/v1/diaries`
 - Usuário autenticado no frontend mas sessão não reconhecida pelo Supabase
@@ -68,7 +65,6 @@
 - ✅ Não requer mudanças no código frontend
 
 ## ✅ RESOLVIDO - Problema de Login com Credenciais Inválidas (15/08/2025)
-
 ### Problema
 - Login falhando com "Invalid login credentials"
 - Usuários anteriores não funcionavam
@@ -92,7 +88,6 @@
    - Sincronizado registro entre `auth.users` e `users`
 
 ## ✅ RESOLVIDO - Erro ao Criar Cluster, Usina e Usuários no Admin (15/08/2025)
-
 ### Problema
 - Impossibilidade de criar clusters, usinas e usuários através do painel administrativo
 - Operações de INSERT falhando silenciosamente
@@ -239,59 +234,36 @@ Ao tentar carregar dados de clusters, usinas e usuários no painel administrativ
 ### Resultado
 Todas as operações de leitura no painel administrativo estão funcionando corretamente. As políticas RLS agora usam apenas verificação de email via JWT, evitando JOINs complexos que causavam recursão.
 
-## ✅ Correções Implementadas - Janeiro 2025
+# Registro de Erros e Correções
 
-### 1. Problema das Usinas não Aparecerem no Formulário
-**Problema:** As usinas não estavam sendo carregadas no select do formulário de novo diário.
-**Causa:** O usuário admin@test.com tinha cluster_id nulo, impedindo o acesso às usinas.
-**Solução:** 
-- Atualizado cluster_id do usuário admin para '08752080-7a5f-4b2d-9f1b-a9aeebdebac6'
-- Adicionado componente de debug temporário para diagnóstico
-- Melhorado carregamento automático de dados no DiaryForm
+## 2025-08-20
 
-### 2. Formulário Abrindo como Modal
-**Problema:** O formulário de novo diário abria como modal na mesma página.
-**Solução:** Configurado para abrir em página separada (/diaries/new)
+- Corrigido erro 400 ao carregar diários/relatórios: havia um join inválido `team:teams(name)` nas consultas do PostgREST em `diaries`, mas não existe FK entre `diaries` e `teams`. Removido o join e ajustado o uso de `team_name` para valor padrão "Sem equipe".
+- Ajustado singleton do Supabase para evitar aviso "Multiple GoTrueClient instances": agora `supabaseAdmin` só é criado quando `SERVICE_ROLE` existe e usa `storageKey` distinto.
+- Corrigido erro de runtime "The requested module '/src/components/ui/index.ts' does not provide an export named 'ConfirmModal'": atualizado o barrel `src/components/ui/index.ts` para reexportar `ConfirmModal` via `export * from './ConfirmModal'`.
 
-### 3. Funcionalidade de Múltiplas Atividades
-**Implementações:**
-- ✅ Botão para adicionar novas atividades
-- ✅ Botão para duplicar atividades existentes
-- ✅ Botão para remover atividades (mínimo 1)
-- ✅ Função para ordenar atividades por horário
-- ✅ Validação de conflitos de horário entre atividades
-- ✅ Indicadores visuais para conflitos
-- ✅ Contador de atividades no cabeçalho
+Resultados:
+- HMR recompilou com sucesso e as páginas voltaram a carregar sem o erro 400 nas consultas.
+- Modal de confirmação disponível novamente em AdminPanel, TeamManagement e TeamsPage.
 
-### 4. Melhorias nos Campos de Observação
-**Implementações:**
-- ✅ Labels mais descritivos para campos de observação
-- ✅ Placeholders com sugestões de preenchimento
-- ✅ Campos de observação individuais para cada atividade
-- ✅ Campo de observações gerais do dia melhorado
-- ✅ Dicas visuais para orientar o preenchimento
-- ✅ Validação de erros nos campos de observação
+### Resultado
+- ✅ Requisições de listagem de diários voltaram a funcionar sem erros 400
+- ✅ Página de Relatórios (SS e Horas) carrega normalmente
 
-### 5. Correção de Erros TypeScript e ESLint
-**Problemas Corrigidos:**
-- ✅ **DiaryForm.tsx**: Adicionado import useAuth e declaração da variável 'user'
-- ✅ **DiaryForm.tsx**: Substituído tipos 'any' por interface ActivityData específica
-- ✅ **ConfirmModal.tsx**: Convertido React.createElement para JSX, resolvendo problema de 'children' faltando
-- ✅ **Modal.tsx**: Removido import não utilizado do Button
-- ✅ **DiaryPage.tsx**: Removido variável 'clearError' não utilizada
-- ✅ **Total**: 7 erros corrigidos (4 no DiaryForm, 1 no ConfirmModal, 1 no Modal, 1 no DiaryPage)
+## ✅ RESOLVIDO - Aviso "Multiple GoTrueClient instances" - 20/08/2025
 
-### 6. Correção de Permissões de Usinas
-**Problema:** Usuário `mantenedor@test.com` não conseguia ver as usinas no formulário de diário.
-**Causa:** Políticas RLS só permitiam acesso para admins específicos.
-**Solução:** 
-- Criadas políticas RLS para usuários verem dados do próprio cluster
-- Política "Users can view plants from their cluster" implementada
-- Política "Users can view their own cluster" implementada
-- ✅ Usuários agora podem acessar usinas do seu cluster
+### Causa
+- Dois clientes Supabase eram criados compartilhando a mesma chave de storage padrão
 
-📅 Atualizado em: 15/08/2025, 00:12:00
+### Solução
+- Ajustada a criação do cliente admin para:
+  - Usar `storageKey: 'sb-admin'`
+  - Desabilitar `persistSession`
+  - Criar `supabaseAdmin` somente quando existir `VITE_SUPABASE_SERVICE_ROLE_KEY`
+  - Arquivo: <mcfile name="supabase.ts" path="src/lib/supabase.ts"></mcfile>
 
-🔧 Extensão: Trae Problems Viewer
+### Resultado
+- ⚠️ Aviso eliminado e comportamento consistente do auth no navegador
 
-**📋 Formato:** Checklist Markdown para correção de problemas
+## ℹ️ Observações sobre erros de extensões no console
+- Erros em `pinComponent.js` e ícones de extensões Chrome são externos ao projeto e podem ser ignorados durante o desenvolvimento local.

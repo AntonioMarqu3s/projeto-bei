@@ -4,7 +4,8 @@ export { Input } from './Input';
 export { Select } from './Select';
 export { Card, CardHeader, CardContent, CardFooter } from './Card';
 export { Modal } from './Modal';
-export { ConfirmModal } from './ConfirmModal';
+// Reexportar tudo para evitar problemas de HMR/treeshaking
+export * from './ConfirmModal';
 
 // Exportar tipos se necessário
 export type { ButtonProps } from './Button';

@@ -113,8 +113,7 @@ export const ReportsPage: React.FC = () => {
         .from('diaries')
         .select(`
           *,
-          plant:plants(name, cluster:clusters(name)),
-          team:teams(name)
+          plant:plants(name, cluster:clusters(name))
         `)
         .not('ss_number', 'is', null)
         .gte('date', filters.startDate)
@@ -148,7 +147,7 @@ export const ReportsPage: React.FC = () => {
             equipment: diary.equipment,
             activity: diary.activity,
             ss_number: diary.ss_number,
-            team_name: diary.team?.name || 'Sem equipe'
+            team_name: 'Sem equipe'
           });
           
           return acc;
@@ -183,7 +182,7 @@ export const ReportsPage: React.FC = () => {
         .from('diaries')
         .select(`
           *,
-          plant:plants(cluster:clusters(name))
+          plant:plants(name, cluster:clusters(name))
         `)
         .gte('date', filters.startDate)
         .lte('date', filters.endDate);

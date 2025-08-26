@@ -92,7 +92,6 @@ export const useDiary = () => {
         .select(`
           *,
           plant:plants(name),
-          team:teams(name),
           user:users(name),
           activities:diary_activities(*)
         `)

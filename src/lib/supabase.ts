@@ -16,10 +16,11 @@ export const supabaseAdmin = supabaseServiceRoleKey
   ? createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
         autoRefreshToken: false,
-        persistSession: false
+        persistSession: false,
+        storageKey: 'sb-admin'
       }
     })
-  : createClient(supabaseUrl, supabaseAnonKey)
+  : null
 
 // Tipos para o banco de dados
 export interface User {
